@@ -25,7 +25,27 @@ async function run() {
         // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
 
-        //
+        const db = client.db('proFastDB');
+        const parcelCollection = db.collection('parcels');
+
+        app.get('/parcels', async (req, res) => {
+            const result = await parcelCollection.find().toArray();
+            res.send(result);
+        });
+
+        app.post('/parcels', async (req, res) => {
+            try {
+                const parcelData = req.body;
+                // const newParcel = { ...parcelData, status: 'pending' };
+
+                const result = await parcelCollection.insertOne(parcelData);
+                res.status(201).send(result);
+            } catch (err) {
+                console.error('Error adding parcel:', err);
+                res.status(500).send({ message: 'Failed to add parcel' });
+            }
+        });
+
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
