@@ -33,10 +33,25 @@ async function run() {
             res.send(result);
         });
 
+        // parcels api
+
+        app.get('/parcels', async (req, res) => {
+            const email = req.query.email;
+
+            const query = email ? { email } : {};
+
+            const result = await parcelCollection
+                .find(query)
+                .sort({ _id: -1 }) // latest first
+                .toArray();
+
+            res.send(result);
+        });
+
+
         app.post('/parcels', async (req, res) => {
             try {
                 const parcelData = req.body;
-                // const newParcel = { ...parcelData, status: 'pending' };
 
                 const result = await parcelCollection.insertOne(parcelData);
                 res.status(201).send(result);
