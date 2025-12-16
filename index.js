@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 const cors = require('cors');
 require('dotenv').config();
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
 
 // middleware
@@ -48,7 +48,7 @@ async function run() {
             res.send(result);
         });
 
-
+        // Add a new parcel
         app.post('/parcels', async (req, res) => {
             try {
                 const parcelData = req.body;
@@ -60,6 +60,22 @@ async function run() {
                 res.status(500).send({ message: 'Failed to add parcel' });
             }
         });
+
+        // Delete a parcel by ID
+        app.delete('/parcels/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                const result = await parcelCollection.deleteOne({
+                    _id: new ObjectId(id),
+                });
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to delete parcel' });
+            }
+        });
+
 
 
         // Send a ping to confirm a successful connection
