@@ -34,7 +34,6 @@ async function run() {
         });
 
         // parcels api
-
         app.get('/parcels', async (req, res) => {
             const email = req.query.email;
 
@@ -46,6 +45,21 @@ async function run() {
                 .toArray();
 
             res.send(result);
+        });
+
+        //get parcel by id
+        app.get('/parcels/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                const result = await parcelCollection.findOne({
+                    _id: new ObjectId(id),
+                });
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to get parcel' });
+            }
         });
 
         // Add a new parcel
