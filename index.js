@@ -1,9 +1,13 @@
 const express = require('express');
 const app = express();
 const cors = require('cors');
-require('dotenv').config();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
+
+// .env file config
+require('dotenv').config();
+const stripe = require("stripe")(process.env.PAYMENT_GATEWAY_KEY);
+
 
 // middleware
 app.use(cors());
@@ -90,7 +94,21 @@ async function run() {
             }
         });
 
-
+        // create payment intent
+        app.post('/create-payment-intent', async (req, res) => {
+            try {
+                // const amount = req.body.cost;
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount: amount , // cents
+                    currency: "usd",
+                    payment_method_types: ["card"],
+                });
+                res.json({ clientSecret: paymentIntent.client_secret });
+            }
+            catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
