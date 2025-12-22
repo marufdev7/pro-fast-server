@@ -95,6 +95,27 @@ async function run() {
             }
         });
 
+        // get payment history by email
+        app.get("/payments", async (req, res) => {
+            try {
+                const { email } = req.query;
+
+                if (!email) {
+                    return res.status(400).send({ message: "Email is required" });
+                }
+
+                const payments = await paymentsCollection
+                    .find({ userEmail: email })
+                    .sort({ paid_at: -1 })
+                    .toArray();
+
+                res.send(payments);
+            } catch (error) {
+                console.error("Failed to load payments:", error);
+                res.status(500).send({ message: "Failed to load payment history" });
+            }
+        });
+
         // payment history and update parcel status
         app.post('/payments', async (req, res) => {
             try {
@@ -118,7 +139,7 @@ async function run() {
                 // payment history
                 const paymentRecord = {
                     parcelId,
-                    email,
+                    userEmail: email,
                     amount,
                     paymentMethod,
                     transactionId,
@@ -140,7 +161,6 @@ async function run() {
         app.post('/create-payment-intent', async (req, res) => {
             try {
                 const amount = req.body.amount;
-                console.log(amount);
                 const paymentIntent = await stripe.paymentIntents.create({
                     amount: amount, // cents
                     currency: "usd",
