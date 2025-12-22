@@ -29,8 +29,9 @@ async function run() {
         // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
 
-        const db = client.db('proFastDB');
-        const parcelCollection = db.collection('parcels');
+        const db = client.db('proFastDB'); // database
+        const parcelCollection = db.collection('parcels'); // parcels collection
+        const paymentsCollection = db.collection('payments'); // payments collection
 
         app.get('/parcels', async (req, res) => {
             const result = await parcelCollection.find().toArray();
@@ -94,12 +95,54 @@ async function run() {
             }
         });
 
+        // payment history and update parcel status
+        app.post('/payments', async (req, res) => {
+            try {
+                const { parcelId, email, amount, paymentMethod, transactionId } = req.body;
+
+                // Update parcel payment status
+                const updateResult = await parcelCollection.updateOne(
+                    { _id: new ObjectId(parcelId) },
+                    {
+                        $set: {
+                            payment_status: 'Paid',
+                        }
+                    }
+
+                );
+
+                if (updateResult.modifiedCount === 0) {
+                    return res.status(404).send({ message: 'Parcel not found or already paid' });
+                }
+
+                // payment history
+                const paymentRecord = {
+                    parcelId,
+                    email,
+                    amount,
+                    paymentMethod,
+                    transactionId,
+                    paid_at_string: new Date().toLocaleString(),
+                    paid_at: new Date(),
+                };
+                const paymentResult = await paymentsCollection.insertOne(paymentRecord);
+                res.status(201).send({
+                    message: 'Payment recorded and parcel marked as paid',
+                    insertedId: paymentResult.insertedId,
+                });
+            } catch (error) {
+                console.error('Payment processing failed:', error);
+                res.status(500).send({ message: 'Failed to process payment' });
+            }
+        });
+
         // create payment intent
         app.post('/create-payment-intent', async (req, res) => {
             try {
-                // const amount = req.body.cost;
+                const amount = req.body.amount;
+                console.log(amount);
                 const paymentIntent = await stripe.paymentIntents.create({
-                    amount: amount , // cents
+                    amount: amount, // cents
                     currency: "usd",
                     payment_method_types: ["card"],
                 });
