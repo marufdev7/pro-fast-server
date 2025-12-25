@@ -42,6 +42,16 @@ async function run() {
                 const email = req.body.email;
                 const existingUser = await userCollection.findOne({ email });
                 if (existingUser) {
+
+                    //update Last login
+                    const updateLoginTime = await userCollection.updateOne(
+                        { email },
+                        {
+                            $set: {
+                                last_log_in: req.body.last_log_in,
+                            },
+                        }
+                    )
                     return res.status(200).send({ message: 'User already exists', inserted: false });
                 }
 
