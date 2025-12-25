@@ -42,6 +42,7 @@ async function run() {
         const userCollection = db.collection('users') // user collection
         const parcelCollection = db.collection('parcels'); // parcels collection
         const paymentsCollection = db.collection('payments'); // payments collection
+        const ridersCollection = db.collection('riders'); // riders collection
         // const trackingCollection = db.collection('tracking') // tracking collection
 
         // custom middlewares
@@ -151,6 +152,13 @@ async function run() {
                 res.status(500).send({ message: 'Failed to delete parcel' });
             }
         });
+
+        // riders api
+        app.post('/riders', async (req, res) => {
+            const rider = req.body;
+            const result = await ridersCollection.insertOne(rider);
+            res.send(result);
+        })
 
         // // parcel tracking
         // app.post('/tracking', async (req, res) => {
