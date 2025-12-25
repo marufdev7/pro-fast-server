@@ -35,6 +35,20 @@ async function run() {
         const paymentsCollection = db.collection('payments'); // payments collection
         // const trackingCollection = db.collection('tracking') // tracking collection
 
+        // custom middlewares
+        const verifyFBToken = async (req, res, next) => {
+            const authHeader = req.headers.Authentication;
+            if (!authHeader) {
+                res.status(401).send({ message: 'unauthorized access' });
+            }
+
+            const token = authHeader.split(' ')[1];
+            if (!token) {
+                res.status(401).send({ message: 'unauthorized access' });
+            }
+
+            next();
+        }
 
         // users api
         app.post('/users', async (req, res) => {
@@ -64,16 +78,11 @@ async function run() {
             }
         })
 
-        app.get('/parcels', async (req, res) => {
-            const result = await parcelCollection.find().toArray();
-            res.send(result);
-        });
-
         // parcels api
-        app.get('/parcels', async (req, res) => {
+        app.get('/parcels', verifyFBToken, async (req, res) => {
             const email = req.query.email;
 
-            const query = email ? { email } : {};
+            const query = email ? { created_by: email } : {};
 
             const result = await parcelCollection
                 .find(query)
