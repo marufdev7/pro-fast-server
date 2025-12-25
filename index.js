@@ -46,17 +46,25 @@ async function run() {
 
         // custom middlewares
         const verifyFBToken = async (req, res, next) => {
-            const authHeader = req.headers.Authentication;
+            const authHeader = req.headers.authorization;
             if (!authHeader) {
-                res.status(401).send({ message: 'unauthorized access' });
+                res.status(401).send({ message: 'Unauthorized Access' });
             }
 
             const token = authHeader.split(' ')[1];
             if (!token) {
-                res.status(401).send({ message: 'unauthorized access' });
+                res.status(401).send({ message: 'Unauthorized Access' });
             }
 
-            next();
+            // verify token
+            try {
+                const decoded = await admin.auth().verifyIdToken(token);
+                req.decoded = decoded;
+                next();
+            }
+            catch (error) {
+                return res.status(403).send({ message: 'Forbidden Access' })
+            }
         }
 
         // users api
@@ -166,12 +174,17 @@ async function run() {
         // })
 
         // get payment history by email
-        app.get("/payments", async (req, res) => {
+        app.get("/payments", verifyFBToken, async (req, res) => {
             try {
                 const { email } = req.query;
 
                 if (!email) {
                     return res.status(400).send({ message: "Email is required" });
+                }
+
+                // console.log('decoded', req.decoded);
+                if (req.decoded.email !== email) {
+                    return res.status(403).send({ message: 'Forbidden Access' })
                 }
 
                 const payments = await paymentsCollection
