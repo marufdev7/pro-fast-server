@@ -30,8 +30,29 @@ async function run() {
         await client.connect();
 
         const db = client.db('proFastDB'); // database
+        const userCollection = db.collection('users') // user collection
         const parcelCollection = db.collection('parcels'); // parcels collection
         const paymentsCollection = db.collection('payments'); // payments collection
+        // const trackingCollection = db.collection('tracking') // tracking collection
+
+
+        // users api
+        app.post('/users', async (req, res) => {
+            try {
+                const email = req.body.email;
+                const existingUser = await userCollection.findOne({ email });
+                if (existingUser) {
+                    return res.status(200).send({ message: 'User already exists', inserted: false });
+                }
+
+                const user = req.body;
+                const result = await userCollection.insertOne(user);
+                res.status(201).send(result);
+
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to add a user' });
+            }
+        })
 
         app.get('/parcels', async (req, res) => {
             const result = await parcelCollection.find().toArray();
@@ -61,7 +82,7 @@ async function run() {
                     _id: new ObjectId(id),
                 });
 
-                res.send(result);
+                res.status(201).send(result);
             } catch (error) {
                 res.status(500).send({ message: 'Failed to get parcel' });
             }
@@ -94,6 +115,27 @@ async function run() {
                 res.status(500).send({ message: 'Failed to delete parcel' });
             }
         });
+
+        // // parcel tracking
+        // app.post('/tracking', async (req, res) => {
+        //     try {
+        //         const { tracking_id, parcelId, message, status, updated_by = '' } = req.body;
+
+        //         const trackingLog = {
+        //             tracking_id,
+        //             parcelId: parcelId ? new ObjectId(parcelId) : undefined,
+        //             message,
+        //             status,
+        //             time: new Date(),
+        //             updated_by,
+        //         };
+
+        //         const result = await trackingCollection.insertOne(trackingLog);
+        //         res.status(201).send(result)
+        //     } catch (error) {
+        //         res.status(500).send({ message: "Failed to add tracking update" });
+        //     }
+        // })
 
         // get payment history by email
         app.get("/payments", async (req, res) => {
