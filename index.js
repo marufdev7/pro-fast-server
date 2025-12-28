@@ -161,13 +161,22 @@ async function run() {
         })
 
         // ger riders in pending
-
         app.get('/riders/pending', async (req, res) => {
             try {
                 const result = await ridersCollection.find({ status: 'pending' }).toArray();
                 res.send(result);
             } catch (error) {
                 res.status(500).send({ message: 'Failed to load pending riders' });
+            }
+        });
+
+        // get active riders
+        app.get('/riders/active', async (req, res) => {
+            try {
+                const result = await ridersCollection.find({ status: 'active' }).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to load active riders' });
             }
         });
 
