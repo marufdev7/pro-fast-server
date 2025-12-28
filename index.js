@@ -160,6 +160,18 @@ async function run() {
             res.send(result);
         })
 
+        // ger riders in pending
+
+        app.get('/riders/pending', async (req, res) => {
+            try {
+                const result = await ridersCollection.find({ status: 'pending' }).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to load pending riders' });
+            }
+        });
+
+
         // // parcel tracking
         // app.post('/tracking', async (req, res) => {
         //     try {
