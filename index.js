@@ -171,6 +171,25 @@ async function run() {
             }
         });
 
+        // update rider status
+        app.patch('/riders/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+                const { status } = req.body;
+
+                const result = await ridersCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $set: { status },
+                    }
+                );
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to update rider status' });
+            }
+        });
+
 
         // // parcel tracking
         // app.post('/tracking', async (req, res) => {
