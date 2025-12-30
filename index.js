@@ -122,7 +122,36 @@ async function run() {
             } catch (error) {
                 res.status(500).send({ message: 'Failed to add a user' });
             }
-        })
+        });
+
+        // make and remove admin
+        app.patch('/users/:id/role', async (req, res) => {
+            const { id } = req.params;
+            const { role } = req.body;
+
+            if (!['admin', 'user'].includes(role)) {
+                return res.status(400).send({ message: 'Invalid role' });
+            }
+
+            try {
+                const result = await usersCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { role } }
+                );
+
+                if (result.matchedCount === 0) {
+                    return res.status(404).send({ message: 'User not found' });
+                }
+
+                res.send({
+                    message: `User role updated to ${role}`,
+                    modifiedCount: result.modifiedCount,
+                });
+            } catch (error) {
+                console.error('Error updating user role:', error);
+                res.status(500).send({ message: 'Failed to update user role' });
+            }
+        });
 
         // parcels api
         app.get('/parcels', verifyFBToken, async (req, res) => {
