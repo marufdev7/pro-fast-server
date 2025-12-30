@@ -39,7 +39,7 @@ async function run() {
         await client.connect();
 
         const db = client.db('proFastDB'); // database
-        const userCollection = db.collection('users') // user collection
+        const usersCollection = db.collection('users') // user collection
         const parcelCollection = db.collection('parcels'); // parcels collection
         const paymentsCollection = db.collection('payments'); // payments collection
         const ridersCollection = db.collection('riders'); // riders collection
@@ -68,15 +68,43 @@ async function run() {
             }
         }
 
+        // get user by search
+        app.get('/users/search', async (req, res) => {
+            const emailQuery = req.query.email;
+
+            if (!emailQuery) {
+                return res.status(400).send({ message: "Email query is required" });
+            }
+
+            const regex = new RegExp(emailQuery, "i"); // case insensitive partial search
+
+            try {
+                const users = await usersCollection
+                    .find({ email: { $regex: regex } })
+                    .project({
+                        email: 1,
+                        created_at: 1,
+                        role: 1
+                    })
+                    .limit(10)
+                    .toArray();
+
+                res.send(users);
+            } catch (error) {
+                console.error("User search error:", error);
+                res.status(500).send({ message: "Failed to search users" });
+            }
+        });
+
         // users api
         app.post('/users', async (req, res) => {
             try {
                 const email = req.body.email;
-                const existingUser = await userCollection.findOne({ email });
+                const existingUser = await usersCollection.findOne({ email });
                 if (existingUser) {
 
                     //update Last login
-                    const updateLoginTime = await userCollection.updateOne(
+                    const updateLoginTime = await usersCollection.updateOne(
                         { email },
                         {
                             $set: {
@@ -88,7 +116,7 @@ async function run() {
                 }
 
                 const user = req.body;
-                const result = await userCollection.insertOne(user);
+                const result = await usersCollection.insertOne(user);
                 res.status(201).send(result);
 
             } catch (error) {
@@ -201,7 +229,7 @@ async function run() {
                             role: 'rider'
                         }
                     };
-                    const roleResult = await userCollection.updateOne(userQuery, userUpdateDoc);
+                    const roleResult = await usersCollection.updateOne(userQuery, userUpdateDoc);
                 }
 
                 res.send(result);
