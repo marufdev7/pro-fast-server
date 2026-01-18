@@ -46,6 +46,7 @@ async function run() {
         // const trackingCollection = db.collection('tracking') // tracking collection
 
         // custom middlewares
+        // verify firebase token and authorized access
         const verifyFBToken = async (req, res, next) => {
             const authHeader = req.headers.authorization;
             if (!authHeader) {
@@ -61,6 +62,22 @@ async function run() {
             try {
                 const decoded = await admin.auth().verifyIdToken(token);
                 req.decoded = decoded;
+                next();
+            }
+            catch (error) {
+                return res.status(403).send({ message: 'Forbidden Access' })
+            }
+        }
+
+        // verify admin role
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email };
+            try {
+                const user = await usersCollection.findOne(query);
+                if (!user || user.role !== 'admin') {
+                    return res.status(403).send({ message: 'Forbidden Access - Admins only' });
+                }
                 next();
             }
             catch (error) {
@@ -101,7 +118,7 @@ async function run() {
             try {
                 const email = req.params.email;
 
-                if(!email){
+                if (!email) {
                     return res.status(400).send({ message: 'Email is required' });
                 }
 
@@ -146,7 +163,7 @@ async function run() {
         });
 
         // make and remove admin
-        app.patch('/users/:id/role', async (req, res) => {
+        app.patch('/users/:id/role',verifyFBToken, verifyAdmin, async (req, res) => {
             const { id } = req.params;
             const { role } = req.body;
 
@@ -239,7 +256,7 @@ async function run() {
         })
 
         // ger riders in pending
-        app.get('/riders/pending', async (req, res) => {
+        app.get('/riders/pending', verifyFBToken,verifyAdmin, async (req, res) => {
             try {
                 const result = await ridersCollection.find({ status: 'pending' }).toArray();
                 res.send(result);
@@ -249,7 +266,7 @@ async function run() {
         });
 
         // get active riders
-        app.get('/riders/active', async (req, res) => {
+        app.get('/riders/active', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const result = await ridersCollection.find({ status: 'active' }).toArray();
                 res.send(result);
