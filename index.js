@@ -163,7 +163,7 @@ async function run() {
         });
 
         // make and remove admin
-        app.patch('/users/:id/role',verifyFBToken, verifyAdmin, async (req, res) => {
+        app.patch('/users/:id/role', verifyFBToken, verifyAdmin, async (req, res) => {
             const { id } = req.params;
             const { role } = req.body;
 
@@ -193,9 +193,21 @@ async function run() {
 
         // parcels api
         app.get('/parcels', verifyFBToken, async (req, res) => {
-            const email = req.query.email;
+            const { email, payment_status, parcel_status } = req.query;
 
-            const query = email ? { created_by: email } : {};
+            let query = {};
+            if (email) {
+                query = { created_by: email }
+            }
+
+            if (payment_status) {
+                query.payment_status = payment_status;
+            }
+
+            if (parcel_status) {
+                query.parcel_status = parcel_status;
+            }
+            // console.log('parcel query', req.query, query);
 
             const result = await parcelCollection
                 .find(query)
@@ -256,7 +268,7 @@ async function run() {
         })
 
         // ger riders in pending
-        app.get('/riders/pending', verifyFBToken,verifyAdmin, async (req, res) => {
+        app.get('/riders/pending', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const result = await ridersCollection.find({ status: 'pending' }).toArray();
                 res.send(result);
