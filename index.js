@@ -245,6 +245,51 @@ async function run() {
             }
         });
 
+        // Assign a rider to a parcel
+        app.patch('/parcels/:id/assign-rider', async (req, res) => {
+            try {
+                const { riderId, riderName } = req.body;
+                const parcelId = req.params.id;
+
+                if (!parcelId || !riderId) {
+                    return res.status(400).send({ message: "Missing parcel or rider" });
+                }
+
+                // 1. Update parcel
+                const parcelResult = await parcelCollection.updateOne(
+                    { _id: new ObjectId(parcelId) },
+                    {
+                        $set: {
+                            parcel_status: "in-transit",
+                            assigned_rider: new ObjectId(riderId),
+                            assigned_rider_name: riderName,
+                            assigned_at: new Date().toLocaleString(),
+                        }
+                    }
+                );
+
+                // 2. Update rider
+                const riderResult = await ridersCollection.updateOne(
+                    { _id: new ObjectId(riderId) },
+                    {
+                        $set: {
+                            work_status: "in-delivery"
+                        }
+                    }
+                );
+
+                if (!parcelResult.modifiedCount || !riderResult.modifiedCount) {
+                    return res.status(400).send({ message: "Assignment failed" });
+                }
+
+                res.send({ message: "Rider assigned successfully" });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Server error" });
+            }
+        });
+
+
         // Delete a parcel by ID
         app.delete('/parcels/:id', async (req, res) => {
             try {
@@ -290,7 +335,7 @@ async function run() {
         });
 
         // get available riders by district
-        app.get('/riders/available', async (req, res) => {
+        app.get('/riders/available', verifyFBToken, async (req, res) => {
             const { district } = req.query;
 
             if (!district) {
@@ -417,7 +462,7 @@ async function run() {
                     paymentMethod,
                     transactionId,
                     paid_at_string: new Date().toLocaleString(),
-                    paid_at: new Date(),
+                    // paid_at: new Date(),
                 };
                 const paymentResult = await paymentsCollection.insertOne(paymentRecord);
                 res.status(201).send({
