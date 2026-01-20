@@ -50,12 +50,12 @@ async function run() {
         const verifyFBToken = async (req, res, next) => {
             const authHeader = req.headers.authorization;
             if (!authHeader) {
-                res.status(401).send({ message: 'Unauthorized Access' });
+                return res.status(401).send({ message: 'Unauthorized Access' });
             }
 
             const token = authHeader.split(' ')[1];
             if (!token) {
-                res.status(401).send({ message: 'Unauthorized Access' });
+                return res.status(401).send({ message: 'Unauthorized Access' });
             }
 
             // verify token
@@ -261,13 +261,15 @@ async function run() {
         });
 
         // riders api
+
+        // insert rider
         app.post('/riders', async (req, res) => {
             const rider = req.body;
             const result = await ridersCollection.insertOne(rider);
             res.send(result);
         })
 
-        // ger riders in pending
+        // get riders in pending
         app.get('/riders/pending', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const result = await ridersCollection.find({ status: 'pending' }).toArray();
@@ -284,6 +286,28 @@ async function run() {
                 res.send(result);
             } catch (error) {
                 res.status(500).send({ message: 'Failed to load active riders' });
+            }
+        });
+
+        // get available riders by district
+        app.get('/riders/available', async (req, res) => {
+            const { district } = req.query;
+
+            if (!district) {
+                return res.status(400).send({ message: 'District is required' });
+            }
+
+            try {
+                const riders = await ridersCollection.find({
+                    district,
+                    status: 'active',
+                })
+                    .toArray();
+
+                res.send(riders);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: 'Failed to load available riders' });
             }
         });
 
@@ -375,7 +399,7 @@ async function run() {
                     { _id: new ObjectId(parcelId) },
                     {
                         $set: {
-                            payment_status: 'Paid',
+                            payment_status: 'paid',
                         }
                     }
 
