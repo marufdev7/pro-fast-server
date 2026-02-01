@@ -232,6 +232,27 @@ async function run() {
             }
         });
 
+        // get rider assigned parcels
+        app.get('/rider/parcels/:riderId', async (req, res) => {
+            try {
+                const riderId = req.params.riderId;
+
+                const query = {
+                    assigned_rider_id: new ObjectId(riderId),
+                    parcel_status: { $in: ['rider-assigned', 'in-transit'] },
+                };
+
+                const result = await parcelCollection
+                    .find(query)
+                    .sort({ assigned_at: -1 })
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Failed to load rider parcels' });
+            }
+        });
+
         // Add a new parcel
         app.post('/parcels', async (req, res) => {
             try {
@@ -260,8 +281,8 @@ async function run() {
                     { _id: new ObjectId(parcelId) },
                     {
                         $set: {
-                            parcel_status: "in-transit",
-                            assigned_rider: new ObjectId(riderId),
+                            parcel_status: "rider-assigned",
+                            assigned_rider_id: new ObjectId(riderId),
                             assigned_rider_name: riderName,
                             assigned_at: new Date().toLocaleString(),
                         }
@@ -273,7 +294,7 @@ async function run() {
                     { _id: new ObjectId(riderId) },
                     {
                         $set: {
-                            work_status: "in-delivery"
+                            working_status: "in-delivery"
                         }
                     }
                 );
