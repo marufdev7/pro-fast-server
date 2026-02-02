@@ -40,7 +40,7 @@ async function run() {
 
         const db = client.db('proFastDB'); // database
         const usersCollection = db.collection('users') // user collection
-        const parcelCollection = db.collection('parcels'); // parcels collection
+        const parcelsCollection = db.collection('parcels'); // parcels collection
         const paymentsCollection = db.collection('payments'); // payments collection
         const ridersCollection = db.collection('riders'); // riders collection
         // const trackingCollection = db.collection('tracking') // tracking collection
@@ -209,7 +209,7 @@ async function run() {
             }
             // console.log('parcel query', req.query, query);
 
-            const result = await parcelCollection
+            const result = await parcelsCollection
                 .find(query)
                 .sort({ _id: -1 }) // latest first
                 .toArray();
@@ -222,7 +222,7 @@ async function run() {
             try {
                 const id = req.params.id;
 
-                const result = await parcelCollection.findOne({
+                const result = await parcelsCollection.findOne({
                     _id: new ObjectId(id),
                 });
 
@@ -247,7 +247,7 @@ async function run() {
                     return res.status(404).send({ message: "Rider not found" });
                 }
 
-                const parcels = await parcelCollection
+                const parcels = await parcelsCollection
                     .find({
                         assigned_rider_id: new ObjectId(rider._id),
                         parcel_status: { $in: ["rider-assigned", "in-transit"] },
@@ -266,7 +266,7 @@ async function run() {
             try {
                 const parcelData = req.body;
 
-                const result = await parcelCollection.insertOne(parcelData);
+                const result = await parcelsCollection.insertOne(parcelData);
                 res.status(201).send(result);
             } catch (err) {
                 console.error('Error adding parcel:', err);
@@ -285,7 +285,7 @@ async function run() {
                 }
 
                 // 1. Update parcel
-                const parcelResult = await parcelCollection.updateOne(
+                const parcelResult = await parcelsCollection.updateOne(
                     { _id: new ObjectId(parcelId) },
                     {
                         $set: {
@@ -322,7 +322,7 @@ async function run() {
             try {
                 const { id } = req.params;
 
-                const result = await parcelCollection.updateOne(
+                const result = await parcelsCollection.updateOne(
                     {
                         _id: new ObjectId(id),
                         parcel_status: "rider-assigned",
@@ -352,7 +352,7 @@ async function run() {
             try {
                 const { id } = req.params;
 
-                const result = await parcelCollection.updateOne(
+                const result = await parcelsCollection.updateOne(
                     {
                         _id: new ObjectId(id),
                         parcel_status: "in-transit",
@@ -382,7 +382,7 @@ async function run() {
             try {
                 const id = req.params.id;
 
-                const result = await parcelCollection.deleteOne({
+                const result = await parcelsCollection.deleteOne({
                     _id: new ObjectId(id),
                 });
 
@@ -526,7 +526,7 @@ async function run() {
                 const { parcelId, email, amount, paymentMethod, transactionId } = req.body;
 
                 // Update parcel payment status
-                const updateResult = await parcelCollection.updateOne(
+                const updateResult = await parcelsCollection.updateOne(
                     { _id: new ObjectId(parcelId) },
                     {
                         $set: {
