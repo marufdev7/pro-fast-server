@@ -261,6 +261,31 @@ async function run() {
             }
         });
 
+        // load complete parcels delivered for a rider
+        app.get('/rider/completed-parcels', async (req, res) => {
+            try {
+                const { email } = req.query.email;
+
+                if (!email) {
+                    return res.status(400).send({ message: "Rider Email is required" });
+                }
+
+                const query = {
+                    assigned_rider_email: email,
+                    parcel_status: { $in: ['delivered', 'service-center-delivered'] },
+                };
+
+                const option = {
+                    sort: { delivered_at: -1 },
+                };
+
+                const result = await parcelsCollection.find(query, option).toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Failed to load completed parcels" });
+            }
+        })
+
         // Add a new parcel
         app.post('/parcels', async (req, res) => {
             try {
@@ -330,7 +355,7 @@ async function run() {
                     {
                         $set: {
                             parcel_status: "in-transit",
-                            picked_up_at: new Date(),
+                            picked_up_at: new Date().toLocaleString(),
                         },
                     }
                 );
@@ -360,7 +385,7 @@ async function run() {
                     {
                         $set: {
                             parcel_status: "delivered",
-                            delivered_at: new Date(),
+                            delivered_at: new Date().toLocaleString(),
                         },
                     }
                 );
