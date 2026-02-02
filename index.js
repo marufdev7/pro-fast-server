@@ -233,23 +233,31 @@ async function run() {
         });
 
         // get rider assigned parcels
-        app.get('/rider/parcels/:riderId', async (req, res) => {
+        app.get("/riders/parcels", async (req, res) => {
             try {
-                const riderId = req.params.riderId;
+                const { email } = req.query;
 
-                const query = {
-                    assigned_rider_id: new ObjectId(riderId),
-                    parcel_status: { $in: ['rider-assigned', 'in-transit'] },
-                };
+                if (!email) {
+                    return res.status(400).send({ message: "Email is required" });
+                }
 
-                const result = await parcelCollection
-                    .find(query)
+                const rider = await ridersCollection.findOne({ email });
+
+                if (!rider) {
+                    return res.status(404).send({ message: "Rider not found" });
+                }
+
+                const parcels = await parcelCollection
+                    .find({
+                        assigned_rider_id: new ObjectId(rider._id),
+                        parcel_status: { $in: ["rider-assigned", "in-transit"] },
+                    })
                     .sort({ assigned_at: -1 })
                     .toArray();
 
-                res.send(result);
+                res.send(parcels);
             } catch (error) {
-                res.status(500).send({ message: 'Failed to load rider parcels' });
+                res.status(500).send({ message: "Failed to load rider parcels" });
             }
         });
 
@@ -305,7 +313,6 @@ async function run() {
 
                 res.send({ message: "Rider assigned successfully" });
             } catch (error) {
-                console.error(error);
                 res.status(500).send({ message: "Server error" });
             }
         });
@@ -372,7 +379,6 @@ async function run() {
 
                 res.send(riders);
             } catch (error) {
-                console.error(error);
                 res.status(500).send({ message: 'Failed to load available riders' });
             }
         });
