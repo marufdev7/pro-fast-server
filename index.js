@@ -85,6 +85,22 @@ async function run() {
             }
         }
 
+        // verify rider role
+        const verifyRider = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email };
+            try {
+                const user = await usersCollection.findOne(query);
+                if (!user || user.role !== 'rider') {
+                    return res.status(403).send({ message: 'Forbidden Access - Riders only' });
+                }
+                next();
+            }
+            catch (error) {
+                return res.status(403).send({ message: 'Forbidden Access' })
+            }
+        }
+
         // get user by search
         app.get('/users/search', async (req, res) => {
             const emailQuery = req.query.email;
@@ -137,7 +153,7 @@ async function run() {
         // users api
         app.post('/users', async (req, res) => {
             try {
-                const email = req.body.email;
+                const { email, last_log_in } = req.body;
                 const existingUser = await usersCollection.findOne({ email });
                 if (existingUser) {
 
@@ -218,7 +234,7 @@ async function run() {
         });
 
         //get parcel by id
-        app.get('/parcels/:id', async (req, res) => {
+        app.get('/parcels/:id', verifyFBToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -233,7 +249,7 @@ async function run() {
         });
 
         // get rider assigned parcels
-        app.get("/riders/parcels", async (req, res) => {
+        app.get("/riders/parcels", verifyFBToken, verifyRider, async (req, res) => {
             try {
                 const { email } = req.query;
 
@@ -262,9 +278,9 @@ async function run() {
         });
 
         // load complete parcels delivered for a rider
-        app.get('/rider/completed-parcels', async (req, res) => {
+        app.get('/rider/completed-parcels', verifyFBToken, verifyRider, async (req, res) => {
             try {
-                const { email } = req.query.email;
+                const { email } = req.query;
 
                 if (!email) {
                     return res.status(400).send({ message: "Rider Email is required" });
@@ -287,7 +303,7 @@ async function run() {
         })
 
         // Add a new parcel
-        app.post('/parcels', async (req, res) => {
+        app.post('/parcels', verifyFBToken, async (req, res) => {
             try {
                 const parcelData = req.body;
 
@@ -300,7 +316,7 @@ async function run() {
         });
 
         // Assign a rider to a parcel
-        app.patch('/parcels/:id/assign-rider', async (req, res) => {
+        app.patch('/parcels/:id/assign-rider', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const { riderId, riderName } = req.body;
                 const parcelId = req.params.id;
@@ -343,7 +359,7 @@ async function run() {
         });
 
         // Pickup a parcel
-        app.patch("/parcels/:id/pickup", async (req, res) => {
+        app.patch("/parcels/:id/pickup", verifyFBToken, verifyRider, async (req, res) => {
             try {
                 const { id } = req.params;
 
@@ -373,7 +389,7 @@ async function run() {
         });
 
         // Delivered a parcel
-        app.patch("/parcels/:id/deliver", async (req, res) => {
+        app.patch("/parcels/:id/deliver", verifyFBToken, verifyRider, async (req, res) => {
             try {
                 const { id } = req.params;
 
@@ -403,7 +419,7 @@ async function run() {
         });
 
         // Delete a parcel by ID
-        app.delete('/parcels/:id', async (req, res) => {
+        app.delete('/parcels/:id', verifyFBToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -420,7 +436,7 @@ async function run() {
         // riders api
 
         // insert rider
-        app.post('/riders', async (req, res) => {
+        app.post('/riders', verifyFBToken, verifyAdmin, async (req, res) => {
             const rider = req.body;
             const result = await ridersCollection.insertOne(rider);
             res.send(result);
@@ -468,7 +484,7 @@ async function run() {
         });
 
         // update rider status
-        app.patch('/riders/:id', async (req, res) => {
+        app.patch('/riders/:id', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const id = req.params.id;
                 const { status, email } = req.body;
@@ -546,7 +562,7 @@ async function run() {
         });
 
         // payment history and update parcel status
-        app.post('/payments', async (req, res) => {
+        app.post('/payments', verifyFBToken, async (req, res) => {
             try {
                 const { parcelId, email, amount, paymentMethod, transactionId } = req.body;
 
@@ -587,7 +603,7 @@ async function run() {
         });
 
         // create payment intent
-        app.post('/create-payment-intent', async (req, res) => {
+        app.post('/create-payment-intent', verifyFBToken, async (req, res) => {
             try {
                 const amount = req.body.amount;
                 const paymentIntent = await stripe.paymentIntents.create({
