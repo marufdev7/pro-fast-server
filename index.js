@@ -317,6 +317,65 @@ async function run() {
             }
         });
 
+        // Pickup a parcel
+        app.patch("/parcels/:id/pickup", async (req, res) => {
+            try {
+                const { id } = req.params;
+
+                const result = await parcelCollection.updateOne(
+                    {
+                        _id: new ObjectId(id),
+                        parcel_status: "rider-assigned",
+                    },
+                    {
+                        $set: {
+                            parcel_status: "in-transit",
+                            picked_up_at: new Date(),
+                        },
+                    }
+                );
+
+                if (result.matchedCount === 0) {
+                    return res
+                        .status(400)
+                        .send({ message: "Parcel not eligible for pickup" });
+                }
+
+                res.send({ message: "Parcel picked up successfully" });
+            } catch (error) {
+                res.status(500).send({ message: "Failed to pickup parcel" });
+            }
+        });
+
+        // Delivered a parcel
+        app.patch("/parcels/:id/deliver", async (req, res) => {
+            try {
+                const { id } = req.params;
+
+                const result = await parcelCollection.updateOne(
+                    {
+                        _id: new ObjectId(id),
+                        parcel_status: "in-transit",
+                    },
+                    {
+                        $set: {
+                            parcel_status: "delivered",
+                            delivered_at: new Date(),
+                        },
+                    }
+                );
+
+                if (result.matchedCount === 0) {
+                    return res
+                        .status(400)
+                        .send({ message: "Parcel not eligible for delivery" });
+                }
+
+                res.send({ message: "Parcel delivered successfully" });
+            } catch (error) {
+                res.status(500).send({ message: "Failed to deliver parcel" });
+            }
+        });
 
         // Delete a parcel by ID
         app.delete('/parcels/:id', async (req, res) => {
