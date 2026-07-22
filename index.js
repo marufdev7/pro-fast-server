@@ -444,7 +444,7 @@ async function run() {
                 await trackingLog(
                     parcelData.tracking_id,
                     result.insertedId,
-                    parcelData.parcel_status || 'pending'
+                    parcelData.parcel_status || 'parcel-created'
                 );
                 res.status(201).send(result);
             } catch (err) {
@@ -491,7 +491,7 @@ async function run() {
                 }
 
                 // add tracking log
-                trackingLog(tracking_id, parcelId, "rider-assigned");
+                await trackingLog(tracking_id, parcelId, "rider-assigned");
 
                 res.send({ message: "Rider assigned successfully" });
             } catch (error) {
@@ -728,6 +728,7 @@ async function run() {
         });
 
 
+        // payments api
 
         // get payment history by email
         app.get("/payments", verifyFBToken, async (req, res) => {
@@ -809,6 +810,15 @@ async function run() {
             catch (error) {
                 res.status(500).json({ error: error.message });
             }
+        });
+
+        // trackings api
+
+        app.get('/trackings/:tracking_id/logs', async (req, res) => { 
+            const tracking_id = req.params.tracking_id;
+            const query = { tracking_id };
+            const result = await trackingsCollection.find(query).toArray();
+            res.send(result);
         });
 
         // Send a ping to confirm a successful connection
