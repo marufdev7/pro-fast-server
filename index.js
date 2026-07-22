@@ -43,7 +43,10 @@ async function run() {
         const parcelsCollection = db.collection('parcels'); // parcels collection
         const paymentsCollection = db.collection('payments'); // payments collection
         const ridersCollection = db.collection('riders'); // riders collection
-        // const trackingCollection = db.collection('tracking') // tracking collection
+        const riderEarningsCollection = db.collection('riderEarnings'); // rider earnings collection
+        const riderWalletCollection = db.collection('riderWallet'); // rider wallet collection
+        const cashoutCollection = db.collection('cashout'); // cashout requests collection
+        const trackingsCollection = db.collection('tracking') // tracking collection
 
         // custom middlewares
         // verify firebase token and authorized access
@@ -85,6 +88,21 @@ async function run() {
             }
         }
 
+        // parcel tracking log
+        const trackingLog = async (tracking_id, parcelId, status) => {
+            const log = {
+                tracking_id,
+                parcelId: parcelId ? parcelId.toString() : undefined,
+                status,
+                message: status.split('-').join(' '), // convert status to message
+                created_at: new Date().toLocaleString(),
+                // updated_by,
+            };
+
+            const result = await trackingsCollection.insertOne(log);
+            return result;
+        }
+
         // verify rider role
         const verifyRider = async (req, res, next) => {
             const email = req.decoded.email;
@@ -113,9 +131,15 @@ async function run() {
 
             try {
                 const users = await usersCollection
-                    .find({ email: { $regex: regex } })
+                    .find({
+                        $or: [
+                            { email: { $regex: regex } },
+                            // { name: { $regex: regex } } // add name search
+                        ]
+                    })
                     .project({
                         email: 1,
+                        // name: 1,  // include name in projection
                         created_at: 1,
                         role: 1
                     })
@@ -223,8 +247,6 @@ async function run() {
             if (parcel_status) {
                 query.parcel_status = parcel_status;
             }
-            // console.log('parcel query', req.query, query);
-
             const result = await parcelsCollection
                 .find(query)
                 .sort({ _id: -1 }) // latest first
@@ -251,23 +273,18 @@ async function run() {
         // get rider assigned parcels
         app.get("/riders/parcels", verifyFBToken, verifyRider, async (req, res) => {
             try {
-                const { email } = req.query;
-
-                if (!email) {
-                    return res.status(400).send({ message: "Email is required" });
-                }
+                const email = req.decoded.email;
 
                 const rider = await ridersCollection.findOne({ email });
 
                 if (!rider) {
-                    return res.status(404).send({ message: "Rider not found" });
+                    return res.status(404).send({ message: "Rider profile not found" });
                 }
 
-                const parcels = await parcelsCollection
-                    .find({
-                        assigned_rider_id: new ObjectId(rider._id),
-                        parcel_status: { $in: ["rider-assigned", "in-transit"] },
-                    })
+                const parcels = await parcelsCollection.find({
+                    assigned_rider_id: rider._id,
+                    parcel_status: { $in: ["rider-assigned", "in-transit"] },
+                })
                     .sort({ assigned_at: -1 })
                     .toArray();
 
@@ -278,29 +295,145 @@ async function run() {
         });
 
         // load complete parcels delivered for a rider
-        app.get('/rider/completed-parcels', verifyFBToken, verifyRider, async (req, res) => {
+        app.get("/riders/completed-deliveries", verifyFBToken, verifyRider, async (req, res) => {
             try {
-                const { email } = req.query;
+                const email = req.decoded.email;
 
-                if (!email) {
-                    return res.status(400).send({ message: "Rider Email is required" });
+                const rider = await ridersCollection.findOne({ email });
+
+                if (!rider) {
+                    return res.status(404).send({ message: "Rider profile not found" });
                 }
 
-                const query = {
-                    assigned_rider_email: email,
-                    parcel_status: { $in: ['delivered', 'service-center-delivered'] },
-                };
+                const parcels = await parcelsCollection
+                    .find({
+                        assigned_rider_id: new ObjectId(rider._id),
+                        parcel_status: { $in: ["delivered", "service-center-delivered"] },
+                    })
+                    .sort({ delivered_at: -1 })
+                    .toArray();
 
-                const option = {
-                    sort: { delivered_at: -1 },
+                // Earning structure
+                const EARNING_RULES = {
+                    SAME_REGION: 0.3,    // 30%
+                    CROSS_REGION: 0.15,  // 15%
                 };
+                let totalEarning = 0;
 
-                const result = await parcelsCollection.find(query, option).toArray();
-                res.send(result);
+                const deliveries = parcels.map((parcel) => {
+                    let earning = 0;
+
+                    if (parcel.senderWarehouse === parcel.receiverWarehouse) {
+                        earning = parcel.cost * EARNING_RULES.SAME_REGION;
+                    } else {
+                        earning = parcel.cost * EARNING_RULES.CROSS_REGION;
+                    }
+
+                    totalEarning += earning;
+
+                    return {
+                        _id: parcel._id,
+                        tracking_id: parcel.tracking_id,
+                        cost: parcel.cost,
+                        title: parcel.title,
+                        senderWarehouse: parcel.senderWarehouse,
+                        receiverWarehouse: parcel.receiverWarehouse,
+                        picked_up_at: parcel.picked_up_at || null,
+                        delivered_at: parcel.delivered_at || null,
+                        earning: Math.round(earning),
+                        deliveryType: parcel.senderWarehouse === parcel.receiverWarehouse ? "Same Region" : "Cross Region",
+                    };
+                });
+
+                res.send({
+                    totalEarning: Math.round(totalEarning),
+                    deliveries,
+                });
             } catch (error) {
-                res.status(500).send({ message: "Failed to load completed parcels" });
+                console.error("Completed deliveries error:", error);
+                res.status(500).send({ message: "Failed to load completed deliveries" });
             }
-        })
+        });
+
+        // rider cashout request
+        app.post("/riders/cashout", verifyFBToken, verifyRider, async (req, res) => {
+            try {
+                const email = req.decoded.email;
+                const { amount } = req.body;
+
+                const MIN_CASHOUT_AMOUNT = 100;
+
+                // Validate amount - must be positive integer
+                if (!Number.isInteger(amount) || amount <= 0) {
+                    return res.status(400).send({
+                        message: "Amount must be a positive integer",
+                    });
+                }
+
+                if (amount < MIN_CASHOUT_AMOUNT) {
+                    return res.status(400).send({
+                        message: `Minimum cashout amount is ${MIN_CASHOUT_AMOUNT}`,
+                    });
+                }
+
+                // Check rider's wallet balance
+                let wallet = await riderWalletCollection.findOne({ riderEmail: email });
+
+                // If wallet doesn't exist, create one
+                if (!wallet) {
+                    return res.status(400).send({
+                        message: "No wallet found. You need to complete at least one delivery to earn money.",
+                    });
+                }
+
+                if (wallet.availableBalance < amount) {
+                    return res.status(400).send({
+                        message: `Insufficient balance. Available: ${wallet.availableBalance}, Requested: ${amount}`,
+                    });
+                }
+
+                // Create cashout request
+                const cashout = {
+                    riderEmail: email,
+                    amount,
+                    status: "pending",
+                    requested_at: new Date().toLocaleString(),
+                };
+
+                const cashoutResult = await cashoutCollection.insertOne(cashout);
+
+                // Deduct from available balance
+                await riderWalletCollection.updateOne(
+                    { riderEmail: email },
+                    {
+                        $inc: {
+                            availableBalance: -amount,
+                            pendingWithdrawal: amount,
+                        },
+                        $set: { updated_at: new Date().toLocaleString() },
+                    }
+                );
+
+                // Mark earnings as pending_cash out
+                await riderEarningsCollection.updateMany(
+                    { riderEmail: email, status: "available" },
+                    {
+                        $set: { status: "pending_cashout" }
+                    },
+                    { upsert: false }
+                );
+
+                console.log(`Cash out request created for ${email}: ${amount}`);
+                res.send({
+                    message: "Cash out request submitted",
+                    cashoutId: cashoutResult.insertedId,
+                    amount,
+                });
+            } catch (error) {
+                console.error("Cash out error:", error);
+                res.status(500).send({ message: "Cash out failed" });
+            }
+        });
 
         // Add a new parcel
         app.post('/parcels', verifyFBToken, async (req, res) => {
@@ -308,6 +441,11 @@ async function run() {
                 const parcelData = req.body;
 
                 const result = await parcelsCollection.insertOne(parcelData);
+                await trackingLog(
+                    parcelData.tracking_id,
+                    result.insertedId,
+                    parcelData.parcel_status || 'pending'
+                );
                 res.status(201).send(result);
             } catch (err) {
                 console.error('Error adding parcel:', err);
@@ -318,7 +456,7 @@ async function run() {
         // Assign a rider to a parcel
         app.patch('/parcels/:id/assign-rider', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
-                const { riderId, riderName } = req.body;
+                const { riderId, riderName, tracking_id } = req.body;
                 const parcelId = req.params.id;
 
                 if (!parcelId || !riderId) {
@@ -352,6 +490,9 @@ async function run() {
                     return res.status(400).send({ message: "Assignment failed" });
                 }
 
+                // add tracking log
+                trackingLog(tracking_id, parcelId, "rider-assigned");
+
                 res.send({ message: "Rider assigned successfully" });
             } catch (error) {
                 res.status(500).send({ message: "Server error" });
@@ -362,6 +503,7 @@ async function run() {
         app.patch("/parcels/:id/pickup", verifyFBToken, verifyRider, async (req, res) => {
             try {
                 const { id } = req.params;
+                const { tracking_id } = req.body;
 
                 const result = await parcelsCollection.updateOne(
                     {
@@ -382,6 +524,9 @@ async function run() {
                         .send({ message: "Parcel not eligible for pickup" });
                 }
 
+                // add tracking log
+                trackingLog(tracking_id, id, "in-transit");
+
                 res.send({ message: "Parcel picked up successfully" });
             } catch (error) {
                 res.status(500).send({ message: "Failed to pickup parcel" });
@@ -391,9 +536,37 @@ async function run() {
         // Delivered a parcel
         app.patch("/parcels/:id/deliver", verifyFBToken, verifyRider, async (req, res) => {
             try {
+                const riderEmail = req.decoded.email;
                 const { id } = req.params;
+                const { tracking_id } = req.body;
 
-                const result = await parcelsCollection.updateOne(
+                // Get parcel details first
+                const parcel = await parcelsCollection.findOne({
+                    _id: new ObjectId(id),
+                    parcel_status: "in-transit",
+                });
+
+                if (!parcel) {
+                    return res.status(400).send({ message: "Parcel not eligible for delivery" });
+                }
+
+                // Calculate earning based on warehouse location
+                const EARNING_RULES = {
+                    SAME_REGION: 0.3,
+                    CROSS_REGION: 0.15,
+                };
+                let earning = 0;
+
+                if (parcel.senderWarehouse === parcel.receiverWarehouse) {
+                    earning = parcel.cost * EARNING_RULES.SAME_REGION;
+                } else {
+                    earning = parcel.cost * EARNING_RULES.CROSS_REGION;
+                }
+
+                const roundedEarning = Math.round(earning);
+
+                // Update parcel status
+                const updateResult = await parcelsCollection.updateOne(
                     {
                         _id: new ObjectId(id),
                         parcel_status: "in-transit",
@@ -406,14 +579,55 @@ async function run() {
                     }
                 );
 
-                if (result.matchedCount === 0) {
-                    return res
-                        .status(400)
-                        .send({ message: "Parcel not eligible for delivery" });
+                if (updateResult.matchedCount === 0) {
+                    return res.status(400).send({ message: "Parcel not eligible for delivery" });
                 }
 
-                res.send({ message: "Parcel delivered successfully" });
+                // add tracking log
+                trackingLog(tracking_id, id, "delivered");
+
+                // Record earning
+                if (roundedEarning > 0) {
+                    await riderEarningsCollection.insertOne({
+                        riderEmail,
+                        parcelId: parcel._id,
+                        amount: roundedEarning,
+                        deliveryType: parcel.senderWarehouse === parcel.receiverWarehouse ? "Same Region" : "Cross Region",
+                        status: "available",
+                        created_at: new Date().toLocaleString(),
+                    });
+
+                    // Update wallet
+                    await riderWalletCollection.updateOne(
+                        { riderEmail },
+                        {
+                            $inc: {
+                                totalEarned: roundedEarning,
+                                availableBalance: roundedEarning,
+                            },
+                            $set: { updated_at: new Date().toLocaleString() },
+                        },
+                        { upsert: true }
+                    );
+                }
+
+                // Update rider status to "available"
+                await ridersCollection.updateOne(
+                    { _id: parcel.assigned_rider_id },
+                    {
+                        $set: {
+                            working_status: "available",
+                        }
+                    }
+                );
+
+                console.log(`Delivery completed: Parcel ${id}, Earnings: ${roundedEarning}`);
+                res.send({
+                    message: "Parcel delivered successfully & earning recorded",
+                    earning: roundedEarning,
+                });
             } catch (error) {
+                console.error("Delivery error:", error);
                 res.status(500).send({ message: "Failed to deliver parcel" });
             }
         });
@@ -436,7 +650,7 @@ async function run() {
         // riders api
 
         // insert rider
-        app.post('/riders', verifyFBToken, verifyAdmin, async (req, res) => {
+        app.post('/riders', verifyFBToken, async (req, res) => {
             const rider = req.body;
             const result = await ridersCollection.insertOne(rider);
             res.send(result);
@@ -514,26 +728,6 @@ async function run() {
         });
 
 
-        // // parcel tracking
-        // app.post('/tracking', async (req, res) => {
-        //     try {
-        //         const { tracking_id, parcelId, message, status, updated_by = '' } = req.body;
-
-        //         const trackingLog = {
-        //             tracking_id,
-        //             parcelId: parcelId ? new ObjectId(parcelId) : undefined,
-        //             message,
-        //             status,
-        //             time: new Date(),
-        //             updated_by,
-        //         };
-
-        //         const result = await trackingCollection.insertOne(trackingLog);
-        //         res.status(201).send(result)
-        //     } catch (error) {
-        //         res.status(500).send({ message: "Failed to add tracking update" });
-        //     }
-        // })
 
         // get payment history by email
         app.get("/payments", verifyFBToken, async (req, res) => {
@@ -589,7 +783,6 @@ async function run() {
                     paymentMethod,
                     transactionId,
                     paid_at_string: new Date().toLocaleString(),
-                    // paid_at: new Date(),
                 };
                 const paymentResult = await paymentsCollection.insertOne(paymentRecord);
                 res.status(201).send({
