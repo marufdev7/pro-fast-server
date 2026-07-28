@@ -270,6 +270,19 @@ async function run() {
             }
         });
 
+        app.get('/parcels/delivery-status/stats', async (req, res) => {
+            const pipeline = [
+                {
+                    $group: {
+                        _id: '$parcel_status',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]
+            const result = await parcelsCollection.aggregate(pipeline).toArray();
+            res.send(result);
+        })
+
         // get rider assigned parcels
         app.get("/riders/parcels", verifyFBToken, verifyRider, async (req, res) => {
             try {
@@ -814,7 +827,7 @@ async function run() {
 
         // trackings api
 
-        app.get('/trackings/:tracking_id/logs', async (req, res) => { 
+        app.get('/trackings/:tracking_id/logs', async (req, res) => {
             const tracking_id = req.params.tracking_id;
             const query = { tracking_id };
             const result = await trackingsCollection.find(query).toArray();
