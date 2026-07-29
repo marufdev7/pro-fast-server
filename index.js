@@ -15,7 +15,11 @@ app.use(cors());
 app.use(express.json());
 
 
-const serviceAccount = require("./firebase-admin-key.json");
+// const serviceAccount = require("./firebase-admin-key.json");
+
+// get service account form env variable
+const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
@@ -33,11 +37,24 @@ const client = new MongoClient(uri, {
     }
 });
 
-async function run() {
-    try {
-        // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+// Cached connection promise. On serverless (Vercel) the module may be reused
+// across invocations, so connect once and reuse. The driver also auto-connects
+// lazily on the first operation, so routes must NOT wait on this to register.
+let connectPromise = null;
+const connectDB = () => {
+    if (!connectPromise) {
+        connectPromise = client.connect().catch(err => {
+            connectPromise = null; // allow a retry on the next request
+            throw err;
+        });
+    }
+    return connectPromise;
+};
+connectDB().catch(err => console.error('MongoDB initial connect failed:', err.message));
 
+// Routes are registered synchronously at module load — never behind an await.
+function registerRoutes() {
+    {
         const db = client.db('proFastDB'); // database
         const usersCollection = db.collection('users') // user collection
         const parcelsCollection = db.collection('parcels'); // parcels collection
@@ -900,20 +917,37 @@ async function run() {
         });
 
         // Send a ping to confirm a successful connection
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
-    } finally {
-        // Ensures that the client will close when you finish/error
-        // await client.close();
+        // await client.db("admin").command({ ping: 1 });
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
     }
 }
-run().catch(console.dir);
+registerRoutes();
 
 
 app.get('/', (req, res) => {
     res.send("ProFast Server is Running");
 });
 
-app.listen(port, () => {
-    console.log(`ProFast Running on port ${port}`);
-})
+// health check — surfaces whether the DB connection actually succeeded
+app.get('/health', async (req, res) => {
+    try {
+        // await client.db('admin').command({ ping: 1 });
+        res.send({ ok: true, db: 'connected' });
+    } catch (error) {
+        res.status(500).send({ ok: false, db: 'error', message: error.message });
+    }
+});
+
+// 404 handler so unknown paths return JSON instead of Express' HTML page
+app.use((req, res) => {
+    res.status(404).send({ message: `Route not found: ${req.method} ${req.originalUrl}` });
+});
+
+// Only listen when run directly (local dev). Vercel imports the app instead.
+if (require.main === module) {
+    app.listen(port, () => {
+        console.log(`ProFast Running on port ${port}`);
+    });
+}
+
+module.exports = app;
