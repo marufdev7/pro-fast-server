@@ -46,7 +46,7 @@ async function run() {
         const riderEarningsCollection = db.collection('riderEarnings'); // rider earnings collection
         const riderWalletCollection = db.collection('riderWallet'); // rider wallet collection
         const cashoutCollection = db.collection('cashout'); // cashout requests collection
-        const trackingsCollection = db.collection('tracking') // tracking collection
+        const trackingsCollection = db.collection('trackings') // tracking collection
 
         // custom middlewares
         // verify firebase token and authorized access
@@ -154,7 +154,7 @@ async function run() {
         });
 
         // get user by role
-        app.get('/users/:email/role', async (req, res) => {
+        app.get('/users/:email/role', verifyFBToken, async (req, res) => {
             try {
                 const email = req.params.email;
 
@@ -175,7 +175,7 @@ async function run() {
         });
 
         // users api
-        app.post('/users', async (req, res) => {
+        app.post('/users', verifyFBToken, async (req, res) => {
             try {
                 const { email, last_log_in } = req.body;
                 const existingUser = await usersCollection.findOne({ email });
@@ -270,14 +270,23 @@ async function run() {
             }
         });
 
-        app.get('/parcels/delivery-status/stats', async (req, res) => {
+        // get parcel delivery status stats
+        app.get('/parcels/delivery-status/stats', verifyFBToken, async (req, res) => {
             const pipeline = [
                 {
                     $group: {
                         _id: '$parcel_status',
                         count: { $sum: 1 }
                     }
-                }
+                },
+
+                // {
+                //     $project: {
+                //         status: '$_id',
+                //         count: 1,
+                //         // _id: 0
+                //     }
+                // }
             ]
             const result = await parcelsCollection.aggregate(pipeline).toArray();
             res.send(result);
@@ -668,6 +677,62 @@ async function run() {
             const result = await ridersCollection.insertOne(rider);
             res.send(result);
         })
+
+        // get rider delivery stats
+        app.get('/riders/delivery-per-day', async (req, res) => {
+            try {
+                const email = req.query.email;
+                if (!email) return res.status(400).send({ message: 'email is required' });
+
+                const rider = await ridersCollection.findOne({ email });
+                if (!rider) return res.status(404).send({ message: 'Rider not found' });
+
+                const pipeline = [
+                    // 1. only this rider's parcels
+                    { $match: { assigned_rider_id: rider._id } },
+
+                    // 2. bring in this parcel's tracking history
+                    {
+                        $lookup: {
+                            from: 'trackings',
+                            localField: 'tracking_id',
+                            foreignField: 'tracking_id',
+                            as: 'parcel_trackings'
+                        }
+                    },
+
+                    // 3. flatten so each tracking event is its own document
+                    { $unwind: '$parcel_trackings' },
+
+                    // 4. keep only the "delivered" event
+                    { $match: { 'parcel_trackings.status': 'delivered' } },
+
+                    // 5. grab just the date part from "7/24/2026, 1:08:50 AM"
+                    {
+                        $addFields: {
+                            deliveryDate: {
+                                $arrayElemAt: [{ $split: ['$parcel_trackings.created_at', ','] }, 0]
+                            }
+                        }
+                    },
+
+                    // 6. count how many delivered per day
+                    {
+                        $group: {
+                            _id: '$deliveryDate',
+                            deliveredCount: { $sum: 1 }
+                        }
+                    },
+
+                    { $project: { _id: 0, date: '$_id', deliveredCount: 1 } }
+                ];
+
+                const result = await parcelsCollection.aggregate(pipeline).toArray();
+                res.send(result);
+            } catch (err) {
+                res.status(500).send({ message: err.message });
+            }
+        });
 
         // get riders in pending
         app.get('/riders/pending', verifyFBToken, verifyAdmin, async (req, res) => {
